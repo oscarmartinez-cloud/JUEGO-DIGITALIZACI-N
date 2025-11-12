@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cyber Runner: Escape de la Ciudad</title>
+<style>
+body { margin:0; padding:0; overflow:hidden; font-family:'Arial',sans-serif; background: #0a0a0a; }
+#game-container { position: relative; width: 100%; height: 100vh; background: linear-gradient(to top, #0a0a0a, #1a1a1a); overflow: hidden; }
+#player { position:absolute; bottom:50px; left:50px; width:50px; height:50px; background: linear-gradient(135deg,#0ff,#00f); border-radius:10px; }
+.obstacle, .crystal { position:absolute; width:50px; height:50px; border-radius:10px; }
+.obstacle { background: linear-gradient(135deg,#f00,#a00); }
+.crystal { background: linear-gradient(135deg,#0f0,#0a0); }
+#score-board { position:absolute; top:10px; left:10px; color:#0ff; font-size:1.2rem; font-weight:bold; text-shadow:0 0 10px #0ff; }
+#log-container { position:absolute; top:10px; right:10px; max-height:200px; width:200px; overflow-y:auto; background:rgba(0,0,0,0.5); padding:10px; border-radius:10px; font-size:0.8rem; color:#fff; }
+</style>
+</head>
+<body>
+<div id="game-container">
+<div id="player"></div>
+<div id="score-board">Puntos: 0 | Cristales: 0</div>
+<div id="log-container"></div>
+</div>
+<script>
+const player = document.getElementById('player');
+const gameContainer = document.getElementById('game-container');
+const scoreBoard = document.getElementById('score-board');
+const logContainer = document.getElementById('log-container');
+let playerY = 50;
+let jump = false;
+let slide = false;
+let points = 0;
+let crystals = 0;
+const obstacles = [];
+const crystalsList = [];
+
+function log(msg){
+  const entry = document.createElement('div');
+  entry.textContent = msg;
+  logContainer.appendChild(entry);
+  logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function updateScore(){
+  scoreBoard.textContent = `Puntos: ${points} | Cristales: ${crystals}`;
+}
+
+function createObstacle(){
+  const obs = document.createElement('div');
+  obs.classList.add('obstacle');
+  obs.style.bottom='50px';
+  obs.style.left=gameContainer.clientWidth+'px';
+  gameContainer.appendChild(obs);
+  obstacles.push(obs);
+}
+
+function createCrystal(){
+  const crystal = document.createElement('div');
+  crystal.classList.add('crystal');
+  crystal.style.bottom='50px';
+  crystal.style.left=gameContainer.clientWidth+'px';
+  gameContainer.appendChild(crystal);
+  crystalsList.push(crystal);
+}
+
+function moveElements(){
+  obstacles.forEach((obs,index)=>{
+    let left = parseInt(obs.style.left);
+    left -=5;
+    obs.style.left=left+'px';
+    if(left<0){ obs.remove(); obstacles.splice(index,1); points+=10; log('Esquivaste un obstáculo!'); updateScore(); }
+    if(collision(player, obs)){ log('¡Chocaste! Fin del juego.'); clearInterval(gameLoop); }
+  });
+  crystalsList.forEach((cr,index)=>{
+    let left = parseInt(cr.style.left);
+    left -=5;
+    cr.style.left=left+'px';
+    if(left<0){ cr.remove(); crystalsList.splice(index,1); }
+    if(collision(player, cr)){ crystals+=1; log('¡Recolectaste un cristal!'); cr.remove(); crystalsList.splice(index,1); updateScore(); }
+  });
+}
+
+function collision(a,b){
+  const aRect=a.getBoundingClientRect();
+  const bRect=b.getBoundingClientRect();
+  return !(aRect.top>bRect.bottom||aRect.bottom<bRect.top||aRect.left>bRect.right||aRect.right<bRect.left);
+}
+
+document.addEventListener('keydown',(e)=>{
+  if(e.code==='ArrowUp' && !jump){ jump=true; let jumpHeight=0; const up = setInterval(()=>{
+    if(jumpHeight>=100){ clearInterval(up); const down=setInterval(()=>{ if(jumpHeight<=0){ clearInterval(down); jump=false; } player.style.bottom=50+jumpHeight+'px'; jumpHeight-=10; },20); }
+    player.style.bottom=50+jumpHeight+'px'; jumpHeight+=10;
+  },20); }
+});
+
+let spawnCounter=0;
+const gameLoop=setInterval(()=>{
+  spawnCounter+=1;
+  if(spawnCounter%50===0) createObstacle();
+  if(spawnCounter%80===0) createCrystal();
+  moveElements();
+},20);
+</script>
+</body>
+</html>
+
+
+
+
+

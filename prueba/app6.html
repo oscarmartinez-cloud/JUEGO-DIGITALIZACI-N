@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Neon Memory Tiles</title>
+<style>
+body{margin:0;overflow:hidden;font-family:Inter,sans-serif;background:#0a0a18;cursor:none;}
+canvas{display:block;position:absolute;top:0;left:0;}
+#scoreboard{position:absolute;top:12px;left:12px;color:#fff;font-size:1.6rem;z-index:10;}
+#cursor{position:fixed;width:32px;height:32px;border-radius:50%;background:radial-gradient(circle,#ff00ff,transparent);pointer-events:none;z-index:999;transform:translate(-50%,-50%);}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="scoreboard">Score: 0</div>
+<div id="cursor"></div>
+<script>
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+
+const cursor=document.getElementById('cursor');
+document.addEventListener('mousemove', e=>{
+  cursor.style.transform=`translate(${e.clientX}px,${e.clientY}px)`;
+});
+
+const rows=3, cols=3;
+const tiles=[];
+const tileSize=Math.min(canvas.width,canvas.height)/4;
+let sequence=[];
+let playerSeq=[];
+let active=false;
+let score=0;
+
+// Crear tiles con colores distintos y neón
+const colors=[
+  '#ff00ff','#00ffff','#00ff00','#ffff00','#ff5500',
+  '#ff0055','#00ff88','#8800ff','#ffaa00'
+];
+
+for(let r=0;r<rows;r++){
+  for(let c=0;c<cols;c++){
+    tiles.push({
+      x:c*tileSize+canvas.width/2-tileSize*cols/2,
+      y:r*tileSize+canvas.height/2-tileSize*rows/2,
+      color:colors[r*cols+c],
+      glow:0
+    });
+  }
+}
+
+function playSequence(){
+  active=false;
+  let i=0;
+  const interval=setInterval(()=>{
+    if(i>=sequence.length){clearInterval(interval); active=true; playerSeq=[]; return;}
+    tiles[sequence[i]].glow=50; // Glow más alto
+    i++;
+  },700);
+}
+
+function addStep(){
+  sequence.push(Math.floor(Math.random()*tiles.length));
+  playSequence();
+}
+
+canvas.addEventListener('click', e=>{
+  if(!active) return;
+  tiles.forEach((t,i)=>{
+    if(e.clientX>t.x && e.clientX<t.x+tileSize && e.clientY>t.y && e.clientY<t.y+tileSize){
+      t.glow=50; // Glow alto al click
+      playerSeq.push(i);
+      if(playerSeq[playerSeq.length-1]!==sequence[playerSeq.length-1]){
+        alert('Game Over! Score: '+score);
+        reset();
+      } else if(playerSeq.length===sequence.length){
+        score+=sequence.length*10;
+        addStep();
+      }
+    }
+  });
+});
+
+function reset(){
+  sequence=[]; playerSeq=[]; score=0;
+  addStep();
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  tiles.forEach(t=>{
+    ctx.fillStyle=t.color;
+    ctx.shadowColor=t.color;
+    ctx.shadowBlur=t.glow;
+    ctx.fillRect(t.x,t.y,tileSize-10,tileSize-10);
+    if(t.glow>0) t.glow-=1; // Disminuye más lentamente para que el glow dure
+  });
+  document.getElementById('scoreboard').textContent=`Score: ${score}`;
+  requestAnimationFrame(draw);
+}
+
+reset();
+draw();
+</script>
+</body>
+</html>
+

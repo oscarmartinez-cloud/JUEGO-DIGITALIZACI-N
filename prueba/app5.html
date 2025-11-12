@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Neon Typing Challenge - Fácil</title>
+<style>
+body{margin:0;overflow:hidden;font-family:Inter,sans-serif;background:#0b0b18;color:#fff;}
+canvas{display:block;position:absolute;top:0;left:0;}
+#scoreboard{position:absolute;top:12px;left:12px;font-size:1.6rem;z-index:10;}
+#lives{position:absolute;top:12px;right:12px;font-size:1.6rem;z-index:10;}
+#input{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);width:300px;font-size:1.2rem;padding:8px;border-radius:8px;border:none;outline:none;background:rgba(255,255,255,0.05);color:#fff;text-align:center;}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="scoreboard">Score: 0</div>
+<div id="lives">Lives: 5</div>
+<input type="text" id="input" placeholder="Type here..." autofocus autocomplete="off"/>
+
+<script>
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+
+window.addEventListener('resize',()=>{canvas.width=window.innerWidth;canvas.height=window.innerHeight;});
+
+// Palabras más cortas y fáciles
+const words=["NEON","CODE","GLOW","PIX","FUN","HACK","BYTE","LIGHT","DATA"];
+let fallingWords=[];
+let score=0;
+let lives=5;
+
+// Input
+const input=document.getElementById('input');
+input.addEventListener('input',()=>{
+  const typed=input.value.toUpperCase();
+  for(let i=fallingWords.length-1;i>=0;i--){
+    if(fallingWords[i].text===typed){
+      score+=10;
+      fallingWords.splice(i,1);
+      input.value="";
+      break;
+    }
+  }
+});
+
+function spawnWord(){
+  const text=words[Math.floor(Math.random()*words.length)];
+  fallingWords.push({
+    text,
+    x:Math.random()*(canvas.width-100)+50,
+    y:-30,
+    speed:0.5+Math.random()*1.2, // más lento
+    color:`hsl(${Math.random()*360},100%,70%)`
+  });
+}
+
+function update(){
+  fallingWords.forEach((w,i)=>{
+    w.y+=w.speed;
+    if(w.y>canvas.height){
+      lives--;
+      fallingWords.splice(i,1);
+    }
+  });
+  if(Math.random()<0.01) spawnWord(); // menos frecuencia
+  document.getElementById('scoreboard').textContent=`Score: ${score}`;
+  document.getElementById('lives').textContent=`Lives: ${lives}`;
+  if(lives<=0){
+    alert('Game Over! Score: '+score);
+    reset();
+  }
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  fallingWords.forEach(w=>{
+    ctx.font="32px Inter";
+    ctx.fillStyle=w.color;
+    ctx.shadowColor=w.color;
+    ctx.shadowBlur=10;
+    ctx.fillText(w.text,w.x,w.y);
+  });
+}
+
+function reset(){
+  score=0;
+  lives=5;
+  fallingWords=[];
+}
+
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
+

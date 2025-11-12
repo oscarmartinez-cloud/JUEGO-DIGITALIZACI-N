@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Cyber Dodge — Juego</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root{
+    --bg1:#08101c;
+    --bg2:#150626;
+    --accent1:#ff00ff;
+    --accent2:#00eaff;
+    --glass: rgba(255,255,255,0.03);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter, "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial;}
+  body{
+    background: radial-gradient(1000px 600px at 10% 15%, #150026 0%, #08101c 25%, #020617 100%);
+    color:#e6e6ee; cursor:none; overflow:hidden;
+  }
+
+  /* Canvas layout */
+  #root{
+    position:relative; width:min(980px,95vw); margin:24px auto 40px; z-index:2;
+    display:grid; grid-template-columns: 1fr 320px; gap:18px;
+  }
+
+  #panel{
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border-radius:14px; padding:16px; box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+    border:1px solid rgba(255,255,255,0.02);
+  }
+
+  canvas#gameCanvas{
+    width:100%; height:720px; display:block; border-radius:12px; background: linear-gradient(180deg, rgba(0,0,0,0.25), rgba(255,255,255,0.02));
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 0 80px rgba(255,0,255,0.03);
+  }
+
+  .hud{
+    color:#cfeef7; display:flex;flex-direction:column; gap:12px; align-items:stretch;
+  }
+  .stat{display:flex;justify-content:space-between;background:var(--glass);padding:10px;border-radius:10px;font-weight:600}
+  .controls{display:flex;gap:8px;flex-wrap:wrap}
+  button{padding:10px 12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--accent1),#ff6ac7);color:#fff;cursor:pointer;font-weight:700;box-shadow:0 10px 30px rgba(255,0,255,0.06)}
+  button.ghost{background:linear-gradient(135deg,var(--accent2),#0078ff)}
+  button:active{transform:translateY(2px)}
+
+  .legend{font-size:0.85rem;color:#9fb6d1}
+  .center{display:flex;align-items:center;justify-content:center}
+
+  #particles{position:fixed;left:0;top:0;width:100%;height:100%;z-index:0;pointer-events:none}
+
+  /* Cursor halo */
+  #cursor{
+    position:fixed;z-index:9999;pointer-events:none;transform:translate(-50%,-50%);
+    width:32px;height:32px;border-radius:50%;
+    background:radial-gradient(circle at 30% 30%, rgba(255,0,255,0.95), rgba(0,0,0,0) 60%);
+    box-shadow:0 0 24px rgba(255,0,255,0.12);
+    transition: transform .05s linear, width .15s ease, height .15s ease;
+  }
+
+  /* Simple responsive tweak */
+  @media (max-width:980px){
+    #root{grid-template-columns:1fr}
+    canvas#gameCanvas{height:68vh}
+  }
+</style>
+</head>
+<body>
+<canvas id="particles"></canvas>
+
+<div id="root">
+  <div id="panel">
+    <canvas id="gameCanvas" width="900" height="720"></canvas>
+  </div>
+
+  <div id="side" class="hud">
+    <div class="stat"><div>Puntuación</div><div id="score">0</div></div>
+    <div class="stat"><div>Nivel</div><div id="level">1</div></div>
+    <div class="stat"><div>Vidas</div><div id="lives">3</div></div>
+    <div class="stat"><div>Tiempo</div><div id="timer">—</div></div>
+
+    <div style="height:8px"></div>
+    <div class="legend">Controles: Flechas / A D o ratón. Pulsa ESPACIO para pausa.</div>
+
+    <div class="controls" style="margin-top:12px">
+      <button onclick="togglePause()" id="btnPause">Pausa</button>
+      <button class="ghost" onclick="resetAll()">Reiniciar</button>
+      <button class="ghost" onclick="location.href='index.html'">Salir</button>
+    </div>
+
+    <div style="flex:1"></div>
+
+    <div class="stat" style="background: linear-gradient(135deg, rgba(255,0,255,0.06), rgba(0,234,255,0.03))">
+      <div style="font-size:0.9rem">Power-ups activos</div><div id="pwr">—</div>
+    </div>
+  </div>
+</div>
+
+<div id="cursor"></div>
+
+<script>
+/* =========================
+   Config y parámetros
+   ========================= */
+const CONFIG = {
+  playerSize: 52,
+  baseObstacleSpeed: 2.0,
+  spawnBaseInterval: 90,       // frames
+  spawnDecayPerLevel: 6,
+  obstaclesPerLevelIncrease: 0.95,
+  powerupChance: 0.03,
+  maxLives: 3
+};
+
+/* =========================
+   Background particles
+   ========================= */
+const pCanvas = document.getElementById('particles');
+const pCtx = pCanvas.getContext('2d');
+let PW = pCanvas.width = innerWidth, PH = pCanvas.height = innerHeight;
+
+const bgParticles = [];
+for(let i=0;i<180;i++){
+  bgParticles.push({
+    x: Math.random()*PW,
+    y: Math.random()*PH,
+    r: Math.random()*2 + 0.6,
+    hue: 260 + Math.random()*160,
+    alpha: 0.04 + Math.random()*0.5,
+    vx: -0.6 + Math.random()*1.2
+  });
+}
+function drawBG(){
+  pCtx.clearRect(0,0,PW,PH);
+  for(const pt of bgParticles){
+    pCtx.beginPath();
+    pCtx.fillStyle = `hsla(${pt.hue}, 90%, 60%, ${pt.alpha})`;
+    pCtx.arc(pt.x, pt.y, pt.r, 0, Math.PI*2);
+    pCtx.fill();
+    pt.x += pt.vx;
+    pt.y += Math.sin((pt.x+pt.y)*0.002)*0.3;
+    if(pt.x < -10) pt.x = PW+10;
+    if(pt.x > PW+10) pt.x = -10;
+    if(pt.y > PH+10) pt.y = -10;
+  }
+  requestAnimationFrame(drawBG);
+}
+drawBG();
+addEventListener('resize', ()=>{PW=pCanvas.width=innerWidth;PH=pCanvas.height=innerHeight});
+
+/* =========================
+   Game state & helper
+   ========================= */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let state = {
+  score: 0,
+  level: 1,
+  lives: CONFIG.maxLives,
+  timeLeft: 0,
+  paused: false,
+  frame: 0,
+  spawnTimer: CONFIG.spawnBaseInterval,
+  obstacleSpeed: CONFIG.baseObstacleSpeed,
+  obstacles: [],
+  powerups: [],
+  particles: [],
+  player: { x: canvas.width/2 - CONFIG.playerSize/2, y: canvas.height - 110, w: CONFIG.playerSize, h: CONFIG.playerSize, color:'#ff00ff', trail: [] },
+  keys: {},
+  mouse: {x: canvas.width/2, y: canvas.height/2},
+  activePowerups: {}
+};
+
+const DOM = {
+  score: document.getElementById('score'),
+  level: document.getElementById('level'),
+  lives: document.getElementById('lives'),
+  timer: document.getElementById('timer'),
+  pwr: document.getElementById('pwr'),
+  btnPause: document.getElementById('btnPause')
+};
+
+/* =========================
+   Cursor halo
+   ========================= */
+const cursor = document.getElementById('cursor');
+document.addEventListener('mousemove', e => {
+  cursor.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+  // map mouse to canvas coords
+  const rect = canvas.getBoundingClientRect();
+  state.mouse.x = Math.max(0, Math.min(canvas.width, e.clientX - rect.left));
+  state.mouse.y = Math.max(0, Math.min(canvas.height, e.clientY - rect.top));
+});
+const btns = document.querySelectorAll('button');
+btns.forEach(b=>{
+  b.addEventListener('mouseenter', ()=>{cursor.style.width='56px';cursor.style.height='56px'});
+  b.addEventListener('mouseleave', ()=>{cursor.style.width='32px';cursor.style.height='32px'});
+});
+
+/* =========================
+   Controls
+   ========================= */
+addEventListener('keydown', e => {
+  state.keys[e.key] = true;
+  if(e.key === ' '){ togglePause(); e.preventDefault(); }
+});
+addEventListener('keyup', e => { state.keys[e.key] = false; });
+
+/* =========================
+   Utils: random, collide, particle spawn
+   ========================= */
+const rand = (a,b)=> a + Math.random()*(b-a);
+function rectCollision(a,b){
+  return (a.x < b.x + b.width && a.x + a.w > b.x && a.y < b.y + b.height && a.y + a.h > b.y);
+}
+function spawnParticles(x,y,color,count=14,power=1){
+  for(let i=0;i<count;i++){
+    state.particles.push({
+      x, y,
+      vx: (Math.random()-0.5)*6*power,
+      vy: (Math.random()-0.7)*6*power,
+      life: 40 + Math.random()*30,
+      r: 1 + Math.random()*3,
+      hue: color
+    });
+  }
+}
+
+/* =========================
+   Obstáculos y Power-ups
+   ========================= */
+function spawnObstacle(){
+  const w = 24 + Math.random()*80;
+  const h = 18 + Math.random()*36;
+  const x = Math.random()*(canvas.width - w);
+  const typ = Math.random(); // type influences behavior
+  const color = `hsl(${rand(0,360)},90%,60%)`;
+  const speed = state.obstacleSpeed * (1 + Math.random()*0.7);
+  state.obstacles.push({x,y:-h,width:w,height:h,color,speed,typ});
+}
+
+function spawnPowerup(){
+  const kinds = ['slow','score','shield','life'];
+  const kind = kinds[Math.floor(Math.random()*kinds.length)];
+  const w = 28, h = 28;
+  const x = Math.random()*(canvas.width - w);
+  state.powerups.push({kind, x, y:-h, width:w, height:h, color: kind === 'life' ? '#00ff9f' : (kind==='score'?'#ffd24d':'#66f')});
+}
+
+/* =========================
+   Player movement & draw
+   ========================= */
+function updatePlayer(){
+  const p = state.player;
+  // keyboard
+  if(state.keys['ArrowLeft'] || state.keys['a'] || state.keys['A']) p.x -= 6 + state.level*0.4;
+  if(state.keys['ArrowRight'] || state.keys['d'] || state.keys['D']) p.x += 6 + state.level*0.4;
+  // mouse follow (smooth)
+  if(Math.abs(state.mouse.x - (p.x + p.w/2)) > 6){
+    const dir = state.mouse.x - (p.x + p.w/2);
+    p.x += Math.sign(dir) * Math.min(8, Math.abs(dir)*0.15);
+  }
+  // bounds
+  p.x = Math.max(8, Math.min(canvas.width - p.w - 8, p.x));
+
+  // trail (store last positions)
+  p.trail.push({x: p.x + p.w/2, y: p.y + p.h/2, a: 0.9});
+  if(p.trail.length > 26) p.trail.shift();
+}
+
+function drawPlayer(){
+  const p = state.player;
+  // neon trail
+  for(let i=0;i<p.trail.length;i++){
+    const t = p.trail[i];
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(255,0,255,${(i/p.trail.length)*0.16})`;
+    ctx.arc(t.x, t.y, (p.w/2) * (i/p.trail.length) * 0.55, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // main player with glow
+  ctx.save();
+  ctx.shadowBlur = 18; ctx.shadowColor = 'rgba(255,0,255,0.9)';
+  ctx.fillStyle = '#ff00ff';
+  roundRect(ctx, state.player.x, state.player.y, state.player.w, state.player.h, 8, true, false);
+  ctx.restore();
+
+  // inner neon rectangle
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  roundRect(ctx, state.player.x+6, state.player.y+6, state.player.w-12, state.player.h-12, 6, true, false);
+}
+
+/* Helper rounded rect */
+function roundRect(c,x,y,w,h,r,fill,stroke){
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.arcTo(x+w,y,x+w,y+h,r);
+  c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r);
+  c.arcTo(x,y,x+w,y,r);
+  c.closePath();
+  if(fill) c.fill();
+  if(stroke) c.stroke();
+}
+
+/* =========================
+   Game loop: update & render
+   ========================= */
+function update(){
+  if(state.paused) return;
+  state.frame++;
+
+  // spawn logic
+  const spawnInterval = Math.max(18, CONFIG.spawnBaseInterval - (state.level-1) * CONFIG.spawnDecayPerLevel);
+  if(state.frame % Math.floor(spawnInterval) === 0){
+    spawnObstacle();
+    if(Math.random() < CONFIG.powerupChance) spawnPowerup();
+  }
+
+  // increase difficulty slowly
+  if(state.frame % 1200 === 0){
+    state.level++;
+    state.obstacleSpeed += 0.45;
+  }
+
+  // move obstacles & powerups
+  for(const obs of state.obstacles){ obs.y += obs.speed + state.level*0.25; }
+  for(const p of state.powerups){ p.y += 2 + state.level*0.2; }
+
+  // cleanup
+  state.obstacles = state.obstacles.filter(o => o.y < canvas.height + o.height + 30);
+  state.powerups = state.powerups.filter(p => p.y < canvas.height + p.height + 30);
+
+  // update player
+  updatePlayer();
+
+  // collisions obstacles
+  for(let i = state.obstacles.length-1; i>=0; i--){
+    const o = state.obstacles[i];
+    if(rectCollision({x: state.player.x, y: state.player.y, w: state.player.w, h: state.player.h}, {x:o.x, y:o.y, width:o.width, height:o.height})){
+      // check shield
+      if(state.activePowerups['shield'] && state.activePowerups['shield'] > 0){
+        state.activePowerups['shield'] = 0; // consume shield
+        state.obstacles.splice(i,1);
+        spawnParticles(o.x + o.width/2, o.y + o.height/2, 300, 18, 1.4);
+        continue;
+      }
+      // hit
+      spawnParticles(state.player.x + state.player.w/2, state.player.y + state.player.h/2, 300, 28, 1.8);
+      state.obstacles.splice(i,1);
+      state.lives--;
+      if(state.lives <= 0){
+        gameOver();
+        return;
+      }
+    }
+  }
+
+  // collisions powerups
+  for(let i = state.powerups.length-1; i>=0; i--){
+    const p = state.powerups[i];
+    if(rectCollision({x: state.player.x, y: state.player.y, w: state.player.w, h: state.player.h}, {x:p.x, y:p.y, width:p.width, height:p.height})){
+      collectPower(p.kind);
+      state.powerups.splice(i,1);
+    }
+  }
+
+  // particles update
+  for(let i = state.particles.length-1; i>=0; i--){
+    const part = state.particles[i];
+    part.x += part.vx; part.y += part.vy; part.life--;
+    part.vy += 0.08; // gravity tiny
+    if(part.life <= 0) state.particles.splice(i,1);
+  }
+
+  // score over time
+  if(state.frame % 6 === 0) state.score += Math.floor(1 + state.level*0.02);
+  // update DOM
+  DOM.score.textContent = state.score;
+  DOM.level.textContent = state.level;
+  DOM.lives.textContent = state.lives;
+  DOM.timer.textContent = `—`;
+  DOM.pwr.textContent = Object.keys(state.activePowerups).filter(k=>state.activePowerups[k]>0).join(', ') || '—';
+}
+
+/* =========================
+   Power-up effects
+   ========================= */
+function collectPower(kind){
+  switch(kind){
+    case 'slow':
+      state.activePowerups['slow'] = 600; // frames
+      break;
+    case 'score':
+      state.score += 120 + state.level*8;
+      spawnParticles(state.player.x+state.player.w/2, state.player.y, 50, 8, 1.2);
+      break;
+    case 'shield':
+      state.activePowerups['shield'] = 1; // single hit
+      break;
+    case 'life':
+      state.lives = Math.min(CONFIG.maxLives, state.lives + 1);
+      break;
+  }
+}
+
+/* =========================
+   Render function
+   ========================= */
+function render(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // background vignette & grid
+  const g = ctx.createLinearGradient(0,0,0,canvas.height);
+  g.addColorStop(0,'rgba(255,255,255,0.02)');
+  g.addColorStop(1,'rgba(0,0,0,0.08)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // optional grid
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  ctx.strokeStyle = '#00eaff';
+  ctx.lineWidth = 1;
+  const step = 36;
+  for(let x=0;x<canvas.width;x+=step){
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke();
+  }
+  for(let y=0;y<canvas.height;y+=step){
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke();
+  }
+  ctx.restore();
+
+  // obstacles
+  for(const o of state.obstacles){
+    // glow
+    ctx.save();
+    ctx.shadowBlur = 18; ctx.shadowColor = o.color;
+    ctx.fillStyle = o.color;
+    roundRect(ctx, o.x, o.y, o.width, o.height, 6, true);
+    ctx.restore();
+  }
+
+  // powerups (small icons)
+  for(const p of state.powerups){
+    ctx.save();
+    ctx.shadowBlur = 12; ctx.shadowColor = p.color;
+    ctx.fillStyle = p.color;
+    roundRect(ctx, p.x, p.y, p.width, p.height, 8, true);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = 'bold 14px Inter';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.kind[0].toUpperCase(), p.x + p.width/2, p.y + p.height/2 + 1);
+    ctx.restore();
+  }
+
+  // player
+  drawPlayer();
+
+  // particles (front)
+  for(const part of state.particles){
+    ctx.beginPath();
+    ctx.fillStyle = `hsla(${part.hue}, 80%, 60%, ${Math.max(0, part.life/60)})`;
+    ctx.arc(part.x, part.y, part.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // HUD overlay (score small)
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(12,12,220,56);
+  ctx.fillStyle = '#fff';
+  ctx.font = '600 14px Inter';
+  ctx.fillText(`Puntuación: ${state.score}`, 28, 34);
+  ctx.fillText(`Nivel: ${state.level}  Vidas: ${state.lives}`, 28, 54);
+  ctx.restore();
+}
+
+/* =========================
+   Frame runner
+   ========================= */
+let raf;
+function loop(){
+  if(!state.paused){
+    // apply power-up effects (like slow)
+    if(state.activePowerups['slow'] && state.activePowerups['slow'] > 0){
+      state.activePowerups['slow']--;
+      // reduce obstacle movement slightly
+      for(const o of state.obstacles) o.y -= 0.08; // slight slow feel
+    }
+    // decrement timed pwrups if numeric
+    for(const k in state.activePowerups){
+      if(typeof state.activePowerups[k] === 'number' && state.activePowerups[k] > 0 && k !== 'shield'){
+        state.activePowerups[k]--;
+      }
+      if(typeof state.activePowerups[k] === 'number' && state.activePowerups[k] <= 0){
+        delete state.activePowerups[k];
+      }
+    }
+
+    update();
+    render();
+  }
+  raf = requestAnimationFrame(loop);
+}
+loop();
+
+/* =========================
+   Collision & helpers
+   ========================= */
+function gameOver(){
+  state.paused = true;
+  cancelAnimationFrame(raf);
+  setTimeout(()=> {
+    alert(`GAME OVER\nPuntuación: ${state.score}\nNivel: ${state.level}`);
+    resetAll();
+    loop();
+  }, 70);
+}
+
+/* =========================
+   Reset / Pause
+   ========================= */
+function resetAll(){
+  state.score = 0;
+  state.level = 1;
+  state.lives = CONFIG.maxLives;
+  state.obstacles = [];
+  state.powerups = [];
+  state.particles = [];
+  state.frame = 0;
+  state.obstacleSpeed = CONFIG.baseObstacleSpeed;
+  state.paused = false;
+  DOM.score.textContent = state.score;
+  DOM.level.textContent = state.level;
+  DOM.lives.textContent = state.lives;
+  DOM.pwr.textContent = '—';
+}
+function togglePause(){
+  state.paused = !state.paused;
+  DOM.btnPause.textContent = state.paused ? 'Continuar' : 'Pausa';
+}
+
+/* =========================
+   Spawn & spawnParticles helpers (exposed)
+   ========================= */
+function spawnParticles(x,y,hue,count=14,power=1){
+  for(let i=0;i<count;i++){
+    state.particles.push({
+      x, y,
+      vx: (Math.random()-0.5)*6*power,
+      vy: (Math.random()-0.7)*6*power,
+      life: 40 + Math.random()*30,
+      r: 1 + Math.random()*3,
+      hue
+    });
+  }
+}
+
+/* =========================
+   Mouse left-click = dash
+   (optional extra control)
+   ========================= */
+let dashCooldown = 0;
+canvas.addEventListener('mousedown', (e)=>{
+  if(dashCooldown <= 0){
+    // quick dash toward mouse direction
+    const mx = state.mouse.x;
+    const px = state.player.x + state.player.w/2;
+    const dir = Math.sign(mx - px);
+    state.player.x += dir * 90;
+    dashCooldown = 80;
+    spawnParticles(state.player.x + state.player.w/2, state.player.y, 320, 10, 1.6);
+  }
+});
+
+setInterval(()=>{ if(dashCooldown>0) dashCooldown--; }, 1000/60);
+
+/* =========================
+   Periodic cleanup / effects
+   ========================= */
+setInterval(()=>{
+  // occasionally add small powerups
+  if(Math.random() < 0.04) spawnPowerup();
+  // occasionally tiny obstacle bursts to keep things spicy
+  // increase difficulty slowly
+  if(state.frame % 3000 === 0) state.level++;
+}, 700);
+
+/* =========================
+   Initial start
+   ========================= */
+resetAll();
+
+/* Small helpers for outside dev console */
+window.resetAll = resetAll;
+window.togglePause = togglePause;
+window.spawnObstacle = spawnObstacle;
+
+</script>
+</body>
+</html>

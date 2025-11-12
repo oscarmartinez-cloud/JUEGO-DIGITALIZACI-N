@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>UNO Mega Deluxe</title>
+<style>
+body {
+  margin:0; padding:0;
+  font-family: 'Arial', sans-serif;
+  background: radial-gradient(circle at top left, #f8f9fa, #a8dadc);
+  display:flex; flex-direction:column; align-items:center;
+  height:100vh;
+}
+h1 {
+  margin-top:20px;
+  font-size:2.5rem;
+  color:#fff;
+  text-shadow:2px 2px 8px #000;
+}
+#board {
+  display:flex; flex-direction:column; align-items:center; gap:15px;
+  width:95%; max-width:900px;
+  position:relative;
+}
+#topCardEl {
+  display:flex; justify-content:center; margin-bottom:10px; height:150px; position:relative;
+}
+#playedDeck {
+  display:flex; gap:5px; position:absolute; top:0; left:50%; transform:translateX(-50%);
+}
+#playerHand, #aiHand {
+  display:flex; gap:10px; margin-bottom:10px;
+}
+.card {
+  width:80px; height:110px; border-radius:12px;
+  display:flex; justify-content:center; align-items:center;
+  font-weight:bold; font-size:1.5rem; color:#fff;
+  border:2px solid #555;
+  cursor:pointer; transition: transform 0.3s, box-shadow 0.3s;
+  position:relative;
+  box-shadow:0 4px 6px rgba(0,0,0,0.3);
+}
+.card:hover { transform:scale(1.1); box-shadow:0 8px 12px rgba(0,0,0,0.5); }
+.card.played {
+  animation: flyToCenter 0.5s forwards;
+}
+@keyframes flyToCenter {
+  0% { transform:translateY(0) scale(1); opacity:1; }
+  100% { transform:translate(-50px,-150px) scale(0.5); opacity:0; }
+}
+#message {
+  font-size:1.5rem; font-weight:bold;
+  color:#fff; text-shadow:2px 2px 8px #000;
+  margin-top:10px; text-align:center;
+}
+button {
+  padding:10px 15px; font-size:1.1rem;
+  border:none; border-radius:10px; cursor:pointer;
+  background:#fff; color:#333;
+  transition:0.3s;
+}
+button:hover { background:#eee; transform:scale(1.05);}
+#overlay {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  background: rgba(0,0,0,0.75);
+  display:flex; justify-content:center; align-items:center;
+  color:#fff; font-size:3rem; font-weight:bold;
+  text-align:center; opacity:0; pointer-events:none;
+  transition:opacity 0.5s;
+  flex-direction:column;
+}
+#overlay.show { opacity:1; pointer-events:auto; }
+</style>
+</head>
+<body>
+
+<h1>UNO Mega Deluxe</h1>
+<div id="board">
+  <div>IA: <div id="aiHand"></div></div>
+  <div>Mazo central:
+    <div id="topCardEl"><div id="playedDeck"></div></div>
+  </div>
+  <div>Tu Mano: <div id="playerHand"></div></div>
+  <div id="message"></div>
+  <button id="drawBtn">Robar Carta</button>
+  <button id="restartBtn">Reiniciar Juego</button>
+</div>
+
+<div id="overlay">
+  <div id="overlayMessage"></div>
+  <button onclick="closeOverlay()">Cerrar</button>
+</div>
+
+<script>
+const colors=['rojo','verde','azul','amarillo'];
+const specials=['+2','salta','reversa','comodin','+4'];
+let deck=[],discardPile=[],playerHand=[],aiHand=[],topCard=null;
+let currentColor=null;
+let currentPlayer='player';
+let gameOver=false;
+
+const topCardEl=document.getElementById('topCardEl');
+const playedDeck=document.getElementById('playedDeck');
+const playerHandEl=document.getElementById('playerHand');
+const aiHandEl=document.getElementById('aiHand');
+const message=document.getElementById('message');
+const overlay=document.getElementById('overlay');
+const overlayMessage=document.getElementById('overlayMessage');
+
+// Crear baraja
+function createDeck(){
+  deck=[];
+  for(const color of colors){
+    for(let i=0;i<=9;i++) deck.push({tipo:'numero',color,valor:i});
+    specials.slice(0,3).forEach(s=>deck.push({tipo:'especial',color,valor:s}));
+  }
+  for(let i=0;i<4;i++) deck.push({tipo:'especial',color:'negro',valor:'comodin'});
+  for(let i=0;i<4;i++) deck.push({tipo:'especial',color:'negro',valor:'+4'});
+  deck.sort(()=>Math.random()-0.5);
+}
+
+// Robar carta
+function drawCard(hand){
+  if(deck.length===0){
+    deck=discardPile.splice(0,discardPile.length-1).sort(()=>Math.random()-0.5);
+  }
+  if(deck.length>0) hand.push(deck.pop());
+}
+
+// Inicializar juego
+function initGame(){
+  createDeck();
+  playerHand=[]; aiHand=[]; discardPile=[];
+  for(let i=0;i<7;i++){ drawCard(playerHand); drawCard(aiHand);}
+  topCard=deck.pop();
+  currentColor=topCard.color==='negro'?'rojo':topCard.color;
+  discardPile.push(topCard);
+  gameOver=false;
+  currentPlayer='player';
+  updateBoard();
+  message.textContent='Tu turno';
+}
+
+// Mostrar cartas
+function cardDisplay(card){
+  let text=card.valor;
+  let bg;
+  switch(card.color){
+    case 'rojo': bg='#e74c3c'; break;
+    case 'verde': bg='#27ae60'; break;
+    case 'azul': bg='#2980b9'; break;
+    case 'amarillo': bg='#f1c40f'; break;
+    default: bg='#333';
+  }
+  if(card.tipo==='especial' && (card.valor==='comodin' || card.valor==='+4')) bg='#333';
+  return {text,bg};
+}
+
+// Actualizar tablero
+function updateBoard(){
+  playerHandEl.innerHTML='';
+  playerHand.forEach((card,i)=>{
+    const c=document.createElement('div');
+    c.className='card';
+    const info=cardDisplay(card);
+    c.textContent=info.text;
+    c.style.backgroundColor=info.bg;
+    c.addEventListener('click',()=>playCard(playerHand,i));
+    playerHandEl.appendChild(c);
+  });
+
+  aiHandEl.innerHTML='';
+  aiHand.forEach(()=>{ 
+    const c=document.createElement('div');
+    c.className='card';
+    c.textContent='?';
+    c.style.backgroundColor='#999';
+    aiHandEl.appendChild(c);
+  });
+
+  topCardEl.querySelectorAll('.card').forEach(c=>c.remove());
+  const top=document.createElement('div');
+  top.className='card';
+  const info=cardDisplay(topCard);
+  top.textContent=info.text;
+  top.style.backgroundColor=info.bg;
+  topCardEl.appendChild(top);
+}
+
+// Comprobar si la carta se puede jugar
+function canPlay(card){
+  return card.color===currentColor || card.valor===topCard.valor || card.color==='negro';
+}
+
+// Animación carta
+function animatePlay(card){
+  const c=document.createElement('div');
+  c.className='card played';
+  const info=cardDisplay(card);
+  c.textContent=info.text;
+  c.style.backgroundColor=info.bg;
+  playedDeck.appendChild(c);
+  setTimeout(()=>c.remove(),500);
+}
+
+// Jugar carta
+function playCard(hand,index){
+  if(gameOver || currentPlayer!=='player') return;
+  const card=hand[index];
+  if(canPlay(card)){
+    hand.splice(index,1);
+    animatePlay(card);
+    topCard=card;
+    discardPile.push(card);
+    currentColor=card.color==='negro'?prompt("Elige color: rojo, verde, azul, amarillo"):card.color;
+    updateBoard();
+    checkSpecial(card);
+    checkWin();
+  } else {
+    message.textContent='Carta no válida';
+  }
+}
+
+// Cartas especiales
+function checkSpecial(card){
+  const opponent=getOpponentHand();
+  if(card.valor==='+2'){ drawCard(opponent); drawCard(opponent); message.textContent='Oponente roba 2 cartas'; }
+  if(card.valor==='+4'){ for(let i=0;i<4;i++) drawCard(opponent); message.textContent='Oponente roba 4 cartas'; }
+  if(card.valor==='salta'){ message.textContent='Turno saltado'; }
+  setTimeout(nextTurn,600);
+}
+
+function getOpponentHand(){ return currentPlayer==='player'?aiHand:playerHand; }
+
+function nextTurn(){
+  if(gameOver) return;
+  currentPlayer=currentPlayer==='player'?'ai':'player';
+  if(currentPlayer==='ai') aiTurn();
+  else message.textContent='Tu turno';
+}
+
+// Botón robar
+document.getElementById('drawBtn').addEventListener('click',()=>{
+  if(gameOver || currentPlayer!=='player') return;
+  drawCard(playerHand);
+  message.textContent='Has robado una carta';
+  updateBoard();
+  currentPlayer='ai';
+  setTimeout(aiTurn,500);
+});
+
+// IA básica
+function aiTurn(){
+  if(gameOver) return;
+  let playableIndex=aiHand.findIndex(c=>canPlay(c));
+  if(playableIndex>=0){
+    const card=aiHand[playableIndex];
+    aiHand.splice(playableIndex,1);
+    animatePlay(card);
+    topCard=card;
+    discardPile.push(card);
+    currentColor=card.color==='negro'?colors[Math.floor(Math.random()*4)]:card.color;
+    message.textContent='IA jugó una carta';
+    updateBoard();
+    checkSpecial(card);
+    checkWin();
+  } else {
+    drawCard(aiHand);
+    message.textContent='IA robó carta';
+    currentPlayer='player';
+    updateBoard();
+  }
+}
+
+// Comprobar ganador
+function checkWin(){
+  if(playerHand.length===0){ showOverlay('¡GANASTE!'); gameOver=true; }
+  if(aiHand.length===0){ showOverlay('¡LA IA GANA!'); gameOver=true; }
+}
+
+// Overlay de victoria
+function showOverlay(text){
+  overlayMessage.textContent=text;
+  overlay.classList.add('show');
+}
+
+function closeOverlay(){
+  overlay.classList.remove('show');
+  initGame();
+}
+
+document.getElementById('restartBtn').addEventListener('click',initGame);
+
+initGame();
+</script>
+</body>
+</html>
+
+
+
+
+
+
+

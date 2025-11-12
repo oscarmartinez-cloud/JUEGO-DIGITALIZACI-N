@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>El Gran Recorrido — Futuro Digital (fix)</title>
+<style>
+  :root{
+    --bg:#071026;
+    --card:#071a2b;
+    --glass: rgba(255,255,255,0.03);
+    --accent:#00d4ff;
+    --accent-2:#8b5cf6;
+    --muted:#9aa7b2;
+    --player:#ff6b6b;
+    --opponent:#4dd0e1;
+    --cell:#071a2b;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; background:
+      radial-gradient(ellipse at 10% 10%, rgba(139,92,246,0.08), transparent 10%),
+      radial-gradient(ellipse at 90% 90%, rgba(0,212,255,0.04), transparent 10%),
+      var(--bg);
+    color:#e6f1f8;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    padding:18px;
+    display:flex; justify-content:center;
+  }
+
+  /* Container */
+  .app{
+    width:1200px; max-width:100%; display:flex; gap:20px;
+  }
+
+  /* Left: board & controls */
+  .panel-left{flex:1; display:flex; flex-direction:column; align-items:center; gap:14px}
+  .title{display:flex;align-items:center;gap:10px}
+  .title h1{font-size:20px;margin:0;color:#fff}
+  .board-wrap{
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,0.04);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+
+  /* grid board (8 cols x 7 rows) */
+  .board{
+    width:720px; height:630px; display:grid; gap:8px;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(7, 1fr);
+    background: linear-gradient(135deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    padding:10px; border-radius:10px;
+    position:relative; overflow:visible;
+  }
+
+  .cell{
+    border-radius:10px; position:relative; display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:13px; color:var(--muted);
+    background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(0,0,0,0.02));
+    border: 1px solid rgba(255,255,255,0.03);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+    transition: transform .18s, box-shadow .18s;
+    cursor:pointer;
+  }
+  .cell:hover{ transform: translateY(-6px) scale(1.02); box-shadow: 0 18px 40px rgba(0,0,0,0.7) }
+
+  .cell .tag{ position:absolute; bottom:6px; right:8px; font-size:11px; color:var(--muted); opacity:0.9 }
+
+  /* types */
+  .cell.advance{ background: linear-gradient(180deg, rgba(0,212,255,0.05), rgba(0,212,255,0.03)); border: 1px solid rgba(0,212,255,0.12); color:#e6fbff}
+  .cell.retreat{ background: linear-gradient(180deg, rgba(255,107,107,0.04), rgba(255,107,107,0.02)); border:1px solid rgba(255,107,107,0.12); color:#fff1f1 }
+  .cell.portal{ background: linear-gradient(180deg, rgba(139,92,246,0.04), rgba(139,92,246,0.02)); border:1px solid rgba(139,92,246,0.12); color:#f4eaff }
+  .cell.treasure{ background: linear-gradient(180deg, rgba(241,196,15,0.04), rgba(241,196,15,0.02)); border:1px solid rgba(241,196,15,0.12); color:#fff9e6 }
+  .cell.trap{ background: linear-gradient(180deg, rgba(255,180,180,0.03), rgba(255,180,180,0.01)); border:1px solid rgba(255,110,110,0.06); color:#fff7f7 }
+  .cell.finish{ background: linear-gradient(180deg, rgba(39,174,96,0.06), rgba(39,174,96,0.03)); border:1px solid rgba(39,174,96,0.12); color:#ebfff0 }
+
+  /* glowing pulse for active special */
+  .cell.effect { box-shadow: 0 0 30px rgba(0,212,255,0.08), inset 0 0 18px rgba(0,212,255,0.03); transform: translateY(-8px) scale(1.03) }
+
+  /* pieces */
+  .piece{
+    width:46px;height:46px;border-radius:50%; position:absolute; display:flex; align-items:center; justify-content:center;
+    color:#fff; font-weight:800; font-size:14px; transform: translate(-50%,-50%); transition: top .36s cubic-bezier(.2,.9,.2,1), left .36s cubic-bezier(.2,.9,.2,1), transform .36s;
+    box-shadow: 0 12px 30px rgba(11,18,30,0.6), 0 2px 8px rgba(0,0,0,0.6);
+    border: 3px solid rgba(255,255,255,0.06);
+  }
+  .piece.player{ background: linear-gradient(135deg, #ff7b7b, #ff5a8a); }
+  .piece.opponent{ background: linear-gradient(135deg, #34e7ff, #1e7ff0); }
+
+  /* controls */
+  .controls{ display:flex; gap:12px; align-items:center; margin-top:10px }
+  .dice{
+    width:72px;height:72px;border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:28px;
+    background: linear-gradient(180deg,#ffffff10,#00000010); border:1px solid rgba(255,255,255,0.04); cursor:pointer; user-select:none;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    transition: transform .6s cubic-bezier(.22,.9,.25,1);
+  }
+  .dice.spin{ transform: rotate(540deg) scale(1.02); }
+
+  /* sidebar */
+  .panel{ width:360px; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03)); border-radius:10px; padding:14px; border:1px solid rgba(255,255,255,0.03); box-shadow: 0 10px 30px rgba(0,0,0,0.5) }
+  .panel h3{ margin:0 0 8px 0; color:#dff6ff }
+  .panel p, .panel li{ color:var(--muted); font-size:14px }
+  .log{ height:300px; overflow:auto; background: rgba(255,255,255,0.02); padding:8px; border-radius:8px; margin-top:8px; border:1px solid rgba(255,255,255,0.02) }
+  .menu-overlay{
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:linear-gradient(180deg, rgba(7,16,38,0.6), rgba(7,16,38,0.85));
+    z-index:60;
+  }
+  .menu-card{
+    width:520px; background: linear-gradient(180deg,#071a2b,#08192a); border-radius:12px; border:1px solid rgba(255,255,255,0.03); padding:20px; box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+    color:#dff6ff;
+  }
+  .mode-btn{ width:100%; padding:14px; margin-top:10px; border-radius:10px; border:none; font-weight:800; font-size:16px; cursor:pointer }
+  .mode-btn.primary{ background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#041024; }
+  .mode-btn.secondary{ background:linear-gradient(90deg,#222,#111); color:#dff6ff; border:1px solid rgba(255,255,255,0.04) }
+  .small{ font-size:13px; color:var(--muted) }
+  /* overlay victory */
+  .victory{
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; opacity:0; transition:opacity .24s;
+    z-index:80;
+  }
+  .victory.show{ pointer-events:all; opacity:1; }
+  .victory .card{ width:520px; background:linear-gradient(90deg,#001a2b,#072033); padding:28px; border-radius:12px; text-align:center; color:#eaffff; box-shadow: 0 40px 120px rgba(0,0,0,0.8) }
+  .victory h2{ margin:0 0 8px 0; font-size:28px }
+  .victory p{ color:var(--muted); margin-bottom:14px }
+  .footer-info{ margin-top:6px; color:var(--muted); font-size:13px }
+
+  /* small popover for cell info */
+  .cell-desc{
+    position:absolute; padding:8px 10px; border-radius:8px; background:rgba(0,0,0,0.8); color:#e6f1f8; font-size:13px; pointer-events:none; z-index:70; max-width:220px; box-shadow:0 10px 30px rgba(0,0,0,0.6);
+    border:1px solid rgba(255,255,255,0.03);
+  }
+
+  @media (max-width:1100px){
+    .app{ flex-direction:column; align-items:center }
+    .board{ width:92vw; height: (92vw * 7 / 8); grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(7, 1fr); }
+    .panel{ width:92vw }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- left -->
+  <div class="panel-left">
+    <div class="title">
+      <h1>El Gran Recorrido — Futuro Digital</h1>
+    </div>
+
+    <div class="board-wrap">
+      <div id="board" class="board" aria-hidden="false"></div>
+    </div>
+
+    <div class="controls">
+      <div id="dice" class="dice" title="Tirar dado">🎲</div>
+      <button id="btnRoll" class="mode-btn primary">Lanzar</button>
+      <button id="btnRestart" class="mode-btn secondary">Reiniciar</button>
+      <div class="footer-info" id="turnInfo">Turno: —</div>
+    </div>
+  </div>
+
+  <!-- right -->
+  <div class="panel">
+    <h3>Reglas & Extras</h3>
+    <p class="small">Modo <strong id="modeLabel">—</strong>. Turnos por dispositivo (1 vs 1) o IA automática (1 vs IA).</p>
+    <ul>
+      <li><strong>Objetivo:</strong> llegar a la última casilla.</li>
+      <li>Casillas especiales: <em>Avanza</em>, <em>Retrocede</em>, <em>Portal</em>, <em>Tesoro</em>, <em>Trampa</em>, <em>Tirada Extra</em>.</li>
+      <li>Si caes sobre la ficha enemiga → la envías al inicio.</li>
+      <li>Las casillas especiales muestran efecto y animación.</li>
+    </ul>
+
+    <h3 style="margin-top:12px">Log</h3>
+    <div id="log" class="log"></div>
+
+    <h3 style="margin-top:12px">Acciones</h3>
+    <p class="small">Puedes reiniciar en cualquier momento. Pulsa el cubo o Lanzar para tirar.</p>
+  </div>
+</div>
+
+<!-- start menu -->
+<div id="menu" class="menu-overlay">
+  <div class="menu-card">
+    <h2 style="margin:0 0 8px 0">Modo de juego</h2>
+    <p class="small">Elige cómo quieres jugar — local (1vs1, turnándose) o 1vsIA automática.</p>
+    <button id="startVsAI" class="mode-btn primary">1 vs IA</button>
+    <button id="startVsPlayer" class="mode-btn secondary">1 vs 1 (turnos en el mismo dispositivo)</button>
+    <p style="margin-top:10px;color:var(--muted);font-size:13px">Estética: Futuro digital · Animaciones activas</p>
+  </div>
+</div>
+
+<!-- victory -->
+<div id="victory" class="victory">
+  <div class="card">
+    <h2 id="victoryTitle">¡Victoria!</h2>
+    <p id="victoryText">Has llegado a la meta.</p>
+    <button id="btnPlayAgain" class="mode-btn primary">Jugar otra vez</button>
+  </div>
+</div>
+
+<script>
+/* ========= Juego: El Gran Recorrido — Futuro Digital =========
+   - tablero 8x7 = 56 casillas
+   - casillas especiales y eventos aleatorios
+   - modos: 1vsIA, 1vs1 (turnándose)
+   - dado animado, movimiento animado, captura, overlay victoria
+   - sonidos simples con WebAudio
+   
+   FIXES:
+   - 1 vs 1: ahora el botón "Lanzar" y la barra espacio funcionan para ambos jugadores locales (A y B).
+   - playerRoll usa state.turn para saber quién tira.
+   - al hacer click en una casilla especial aparece un pequeño popover explicativo.
+*/
+
+// DOM
+const boardEl = document.getElementById('board');
+const diceEl = document.getElementById('dice');
+const btnRoll = document.getElementById('btnRoll');
+const btnRestart = document.getElementById('btnRestart');
+const logEl = document.getElementById('log');
+const turnInfo = document.getElementById('turnInfo');
+const menuEl = document.getElementById('menu');
+const startVsAI = document.getElementById('startVsAI');
+const startVsPlayer = document.getElementById('startVsPlayer');
+const modeLabel = document.getElementById('modeLabel');
+const victory = document.getElementById('victory');
+const btnPlayAgain = document.getElementById('btnPlayAgain');
+
+// game config
+const COLS = 8, ROWS = 7, TOTAL = COLS * ROWS; // 56
+let cells = []; // DOM cells
+let cellMeta = []; // special metadata
+let mode = null; // "AI" or "P2"
+let state = {
+  players: {
+    A: { name: "Jugador A", pos: 0, skip: false, colorClass: 'player' },
+    B: { name: "Jugador B", pos: 0, skip: false, colorClass: 'opponent' }
+  },
+  turn: "A", // 'A' or 'B' — in 1vIA B is IA
+  animating: false
+};
+
+// Sound helper (simple beep)
+let audioCtx = null;
+function beep(freq=440, time=0.08, vol=0.03){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    g.gain.value = vol;
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start();
+    o.stop(audioCtx.currentTime + time);
+  }catch(e){ /* no audio */ }
+}
+
+// utility log
+function log(msg){
+  const t = new Date().toLocaleTimeString();
+  const div = document.createElement('div');
+  div.innerHTML = `<strong style="color:#9be8ff">[${t}]</strong> ${msg}`;
+  logEl.prepend(div);
+}
+
+// build board & assign special cells
+function setupBoard(){
+  boardEl.innerHTML = '';
+  cells = [];
+  cellMeta = new Array(TOTAL).fill(null).map(()=>({type:'normal'}));
+
+  // define special cells — mix of deterministic + random-ish
+  const specials = [
+    {i:3, type:'advance', val:2, label:'+2'},
+    {i:6, type:'portal', val: 28, label:'Portal'}, // portal to mid
+    {i:9, type:'retreat', val:2, label:'-2'},
+    {i:12, type:'extraturn', val:0, label:'Otra!'},
+    {i:15, type:'lose', val:1, label:'Pierdes1'},
+    {i:18, type:'treasure', val:1, label:'Tesoro'},
+    {i:21, type:'trap', val:2, label:'Trampa'},
+    {i:24, type:'advance', val:3, label:'+3'},
+    {i:30, type:'portal', val:8, label:'Portal'},
+    {i:36, type:'treasure', val:1, label:'Tesoro'},
+    {i:42, type:'retreat', val:3, label:'-3'},
+    {i:47, type:'extraturn', val:0, label:'Otra!'},
+    {i:54, type:'advance', val:2, label:'+2'},
+  ];
+  specials.forEach(s=>{
+    if(s.i>=0 && s.i<TOTAL) cellMeta[s.i] = {...s};
+  });
+
+  // generate grid cells
+  for(let i=0;i<TOTAL;i++){
+    const el = document.createElement('div');
+    el.className = 'cell';
+    el.dataset.idx = i;
+    el.innerHTML = `<div style="z-index:2">${i+1}</div><div class="tag"></div>`;
+    // apply type classes
+    if(cellMeta[i].type === 'advance') el.classList.add('advance');
+    if(cellMeta[i].type === 'retreat') el.classList.add('retreat');
+    if(cellMeta[i].type === 'portal') el.classList.add('portal');
+    if(cellMeta[i].type === 'treasure') el.classList.add('treasure');
+    if(cellMeta[i].type === 'trap') el.classList.add('trap');
+    if(i === TOTAL-1) el.classList.add('finish');
+
+    // label
+    const tag = el.querySelector('.tag');
+    if(cellMeta[i].type !== 'normal') tag.textContent = cellMeta[i].label || cellMeta[i].type;
+
+    // click to show info about special cells
+    el.addEventListener('click', (ev)=>{
+      const idx = Number(el.dataset.idx);
+      showCellInfo(idx, el);
+    });
+
+    boardEl.appendChild(el);
+    cells.push(el);
+  }
+}
+
+// render pieces (only one piece per player)
+function renderPieces(){
+  // remove existing pieces
+  document.querySelectorAll('.piece').forEach(x=>x.remove());
+  // for both players
+  for(const key of ['A','B']){
+    const p = state.players[key];
+    const el = document.createElement('div');
+    el.className = `piece ${p.colorClass}`;
+    el.dataset.player = key;
+    el.innerText = key === 'A' ? 'A' : (mode === 'P2' ? 'B' : 'IA');
+    // insert into cell
+    const cell = cells[Math.min(p.pos, TOTAL-1)];
+    // ensure cell is positioned relatively so absolute piece sits correctly
+    cell.appendChild(el);
+    // small offset when clash to show both
+    const other = state.players[key === 'A' ? 'B' : 'A'];
+    if(other.pos === p.pos && other !== p){
+      // offset positions via transform
+      el.style.transform = 'translate(-35%, -60%) scale(1)';
+    } else {
+      el.style.transform = 'translate(-50%, -50%) scale(1)';
+    }
+  }
+}
+
+// small helper: show a popover near the clicked cell with info
+function showCellInfo(idx, cellEl){
+  const meta = cellMeta[idx] || {type:'normal'};
+  if(meta.type === 'normal') return; // nothing to show
+
+  const descriptions = {
+    advance: `Avanza ${meta.val} casilla(s).`,
+    retreat: `Retrocede ${meta.val} casilla(s).`,
+    portal: `Portal: te teletransporta a la casilla ${meta.val+1}.`,
+    treasure: `Tesoro: recoges ${meta.val || 1} objeto(s).`,
+    trap: `Trampa: pierdes el siguiente turno.`,
+    extraturn: `Tirada extra: ganas un turno adicional inmediato.`,
+    lose: `Pierdes 1: efecto específico (pierdes 1 recurso/turno).`
+  };
+  const text = descriptions[meta.type] || meta.type;
+
+  // remove existing
+  document.querySelectorAll('.cell-desc').forEach(n=>n.remove());
+  const pop = document.createElement('div');
+  pop.className = 'cell-desc';
+  pop.innerText = text;
+
+  // position relative to board
+  const boardRect = boardEl.getBoundingClientRect();
+  const cellRect = cellEl.getBoundingClientRect();
+  const left = cellRect.left - boardRect.left + (cellRect.width/2) - 110; // center-ish
+  const top = cellRect.top - boardRect.top - 46;
+  pop.style.left = `${Math.max(8, left)}px`;
+  pop.style.top = `${Math.max(8, top)}px`;
+  boardEl.appendChild(pop);
+  // auto-hide
+  setTimeout(()=>{ pop.classList.add('hide'); pop.remove(); }, 2500);
+}
+
+// animate dice: spins and final number
+function animateDice(cb){
+  if(diceEl.classList.contains('spin')) return;
+  diceEl.classList.add('spin');
+  beep(880,0.06,0.02);
+  setTimeout(()=>{
+    diceEl.classList.remove('spin');
+    const final = 1 + Math.floor(Math.random()*6);
+    diceEl.innerText = final;
+    beep(600 + final*30,0.08,0.04);
+    cb(final);
+  }, 700 + Math.floor(Math.random()*400));
+}
+
+// move N steps for playerKey (A or B), animated step-by-step
+async function moveSteps(playerKey, steps){
+  state.animating = true;
+  for(let i=0;i<steps;i++){
+    const p = state.players[playerKey];
+    p.pos = Math.min(p.pos + 1, TOTAL-1);
+    renderPieces();
+    await new Promise(r=>setTimeout(r, 260));
+    // capture check
+    const otherKey = (playerKey === 'A') ? 'B' : 'A';
+    if(state.players[otherKey].pos === p.pos && p.pos !== 0 && p.pos !== TOTAL-1){
+      // capture: other returns to 0
+      log(`${p.name} captura a ${state.players[otherKey].name} → enviado al inicio`);
+      state.players[otherKey].pos = 0;
+      renderPieces();
+      beep(350,0.06,0.035);
+      await new Promise(r=>setTimeout(r,180));
+    }
+  }
+  state.animating = false;
+}
+
+// after move apply cell effect, return whether player gets extra turn
+async function applyCell(playerKey){
+  const p = state.players[playerKey];
+  const meta = cellMeta[Math.min(p.pos, TOTAL-1)];
+  if(!meta || meta.type === 'normal') {
+    log(`${p.name} está en casilla ${p.pos+1}.`);
+    return false;
+  }
+  // visual blink
+  const cel = cells[p.pos];
+  cel.classList.add('effect');
+  setTimeout(()=>cel.classList.remove('effect'), 700);
+
+  switch(meta.type){
+    case 'advance':
+      log(`${p.name} cae en Avanza +${meta.val}.`);
+      await moveSteps(playerKey, meta.val);
+      return false;
+    case 'retreat':
+      log(`${p.name} cae en Retrocede ${meta.val}.`);
+      p.pos = Math.max(0, p.pos - meta.val);
+      renderPieces();
+      await new Promise(r=>setTimeout(r,200));
+      return false;
+    case 'portal':
+      log(`${p.name} entra en Portal → salto a casilla ${meta.val+1}.`);
+      p.pos = Math.min(meta.val, TOTAL-1);
+      renderPieces();
+      await new Promise(r=>setTimeout(r,260));
+      return false;
+    case 'treasure':
+      p.treasure = (p.treasure||0) + (meta.val||1);
+      log(`${p.name} encuentra Tesoro! (Total: ${p.treasure})`);
+      return false;
+    case 'trap':
+      p.skip = true;
+      log(`${p.name} cae en Trampa — pierde el siguiente turno.`);
+      return false;
+    case 'extraturn':
+      log(`${p.name} gana Tirada Extra!`);
+      return true;
+    default:
+      return false;
+  }
+}
+
+// check victory
+function checkVictory(playerKey){
+  const p = state.players[playerKey];
+  if(p.pos >= TOTAL-1){
+    // show victory overlay
+    const name = p.name;
+    victory.classList.add('show');
+    document.getElementById('victoryTitle').innerText = (playerKey === 'A' ? (mode==='P2' ? `${name} (A)` : '¡Tú!') : (mode==='P2' ? `${name} (B)` : 'IA'));
+    document.getElementById('victoryText').innerText = `${name} ha llegado a la META.`;
+    log(`${name} ha ganado la partida!`);
+    btnRoll.disabled = true;
+    return true;
+  }
+  return false;
+}
+
+// AI turn logic (basic): roll and move, with small heuristics
+async function aiTurn(){
+  const aiKey = 'B';
+  const p = state.players[aiKey];
+  if(p.skip){
+    log(`${p.name} (IA) pierde turno.`);
+    p.skip = false;
+    return false;
+  }
+  await new Promise(r=>setTimeout(r, 550));
+  const roll = 1 + Math.floor(Math.random()*6);
+  diceEl.innerText = roll;
+  log(`IA tira: ${roll}`);
+  beep(600,0.06,0.03);
+  await moveSteps(aiKey, roll);
+  if(checkVictory(aiKey)) return true;
+  const extra = await applyCell(aiKey);
+  if(checkVictory(aiKey)) return true;
+  if(extra){
+    log('IA obtiene tirada extra.');
+    return await aiTurn();
+  }
+  return false;
+}
+
+// turn management
+async function playerRoll(){
+  if(state.animating) return;
+  const playerKey = state.turn; // now dynamic: A or B
+  const p = state.players[playerKey];
+  // if in AI mode and not player's turn (i.e., B is IA), block
+  if(mode === 'AI' && playerKey === 'B') return;
+
+  if(p.skip){
+    if(playerKey === 'A') log('Has perdido el turno (salteado).');
+    else log(`${p.name} pierde el turno.`);
+    p.skip = false;
+    // pass to next
+    await nextTurn();
+    return;
+  }
+
+  animateDice(async (value) => {
+    log(`${p.name} tira: ${value}`);
+    await moveSteps(playerKey, value);
+    if(checkVictory(playerKey)) return;
+    const extra = await applyCell(playerKey);
+    if(checkVictory(playerKey)) return;
+    if(extra){
+      log(`${p.name} tiene tirada extra!`);
+      return; // same player's turn
+    } else {
+      await nextTurn();
+    }
+  });
+}
+
+// next turn depending on mode
+async function nextTurn(){
+  // toggle turn
+  if(mode === 'P2'){
+    state.turn = state.turn === 'A' ? 'B' : 'A';
+    updateTurnInfo();
+    // in P2 both are human; button enabled for both
+  } else {
+    // AI mode: after player A, AI B auto plays
+    state.turn = state.turn === 'A' ? 'B' : 'A';
+    updateTurnInfo();
+    if(state.turn === 'B'){
+      btnRoll.disabled = true;
+      await aiTurn();
+      if(!checkVictory('B')){
+        state.turn = 'A';
+        updateTurnInfo();
+        btnRoll.disabled = false;
+      }
+    } else {
+      btnRoll.disabled = false;
+    }
+  }
+}
+
+// update UI turn label
+function updateTurnInfo(){
+  const t = state.turn;
+  const who = (t === 'A' ? (mode==='P2' ? 'Jugador A' : 'Jugador') : (mode==='P2' ? 'Jugador B' : 'IA'));
+  turnInfo.textContent = `Turno: ${who}`;
+  // button disabled only when AI mode and it's IA's turn, or when animating
+  btnRoll.disabled = state.animating || (mode==='AI' && t!=='A');
+}
+
+// restart
+function resetGame(){
+  state.players.A.pos = 0; state.players.A.skip = false; state.players.A.treasure = 0;
+  state.players.B.pos = 0; state.players.B.skip = false; state.players.B.treasure = 0;
+  state.turn = 'A';
+  btnRoll.disabled = false;
+  diceEl.innerText = '🎲';
+  victory.classList.remove('show');
+  setupBoard();
+  renderPieces();
+  updateTurnInfo();
+  log('Juego reiniciado.');
+}
+
+// handlers
+btnRoll.onclick = () => {
+  // allow click if it's a human turn (P2 both A and B) or player A in AI mode
+  if(mode === 'AI' && state.turn !== 'A') return;
+  playerRoll();
+};
+diceEl.onclick = () => {
+  if(mode === 'AI' && state.turn !== 'A') return;
+  playerRoll();
+};
+btnRestart.onclick = resetGame;
+btnPlayAgain.onclick = () => { menuEl.style.display = 'flex'; victory.classList.remove('show'); };
+
+// menu
+startVsAI.onclick = () => {
+  mode = 'AI';
+  modeLabel.innerText = '1 vs IA';
+  menuEl.style.display = 'none';
+  initGame();
+};
+startVsPlayer.onclick = () => {
+  mode = 'P2';
+  modeLabel.innerText = '1 vs 1 (local, turnos)';
+  menuEl.style.display = 'none';
+  initGame();
+};
+
+// init game
+function initGame(){
+  setupBoard();
+  // set player names based on mode
+  state.players.A.name = (mode === 'P2') ? 'Jugador A' : 'Jugador';
+  state.players.B.name = (mode === 'P2') ? 'Jugador B' : 'IA';
+  state.players.A.pos = 0; state.players.B.pos = 0;
+  state.players.A.skip = false; state.players.B.skip = false;
+  state.turn = 'A';
+  renderPieces();
+  updateTurnInfo();
+  log('Comienza la partida — ' + (mode==='P2' ? '1 vs 1 (local)': '1 vs IA'));
+  diceEl.innerText = '🎲';
+  btnRoll.disabled = false;
+}
+
+// initial
+menuEl.style.display = 'flex';
+setupBoard();
+renderPieces();
+
+// keyboard: space triggers roll when it's a human turn
+document.addEventListener('keydown', (e)=>{
+  if(e.code === 'Space') {
+    e.preventDefault();
+    // allow when it's A or when P2 and it's B
+    if(mode === 'AI' && state.turn !== 'A') return;
+    playerRoll();
+  }
+});
+
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
